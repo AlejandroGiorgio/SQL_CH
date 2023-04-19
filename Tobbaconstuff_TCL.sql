@@ -1,37 +1,53 @@
--- Inicio una transacción
-START TRANSACTION;
+USE TobbacoNstuff;
 
--- Inserto un nuevo registro en la tabla
-INSERT INTO City (City) VALUES ('Coronda');
+CREATE TABLE payments (
+    payment_id INT AUTO_INCREMENT PRIMARY KEY,
+    costumer_id INT NOT NULL,
+    amount DECIMAL(10,2) NOT NULL,
+    FOREIGN KEY (costumer_id) REFERENCES costumer(id_Costumer)
+) ENGINE = InnoDB;
 
--- Guardardo un punto de guardado de transacción
-SAVEPOINT my_savepoint;
+DELIMITER //
+-- Defino un nuevo procedimiento almacenado llamado process_payment
+CREATE PROCEDURE process_payment(IN p_costumer_id INT, IN p_amount DECIMAL(10,2))
+BEGIN
+    -- Declaro un manejador de salida para excepciones 
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        -- Aqui se deshace cualquier cambio realizado por el procedimiento almacenado
+        ROLLBACK;
+        -- Se genera un error con un mensaje personalizado
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Ocurrió un error al procesar el pago.';
+    END;
 
--- Actualizo el registro
-UPDATE City SET City = 'Rafaela' WHERE City = "Coronda";
+    -- Inicio una nueva transacción
+    START TRANSACTION;
+    -- Inserto una nueva fila en la tabla de pagos con el ID de cliente y el monto especificados
+    INSERT INTO payments (costumer_id, amount) VALUES (p_costumer_id, p_amount);
+    -- Confirmo la transacción para hacer permanentes los cambios
+    COMMIT;
+END//
 
--- Revierto al punto de guardado
-ROLLBACK TO my_savepoint;
+DELIMITER ;
 
--- Confirmo la transacción
-COMMIT;
+CREATE TABLE stock_request (
+    request_id INT AUTO_INCREMENT PRIMARY KEY,
+    product_id INT NOT NULL,
+    quantity INT NOT NULL,
+    FOREIGN KEY (product_id) REFERENCES product(id_product)
+) ENGINE = InnoDB;
 
------------------------------------------------------- 
+DELIMITER //
+CREATE PROCEDURE process_stock_request(IN p_product_id INT, IN p_quantity INT)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'An error occurred while processing the stock request.';
+    END;
 
--- Inicio Otra transacción
-START TRANSACTION;
-
--- Inserto un nuevo registro en la tabla
-INSERT INTO Product (brand, price, origin) VALUES ("51",2.30,"Brasil");
-
--- Guardardo un punto de guardado de transacción
-SAVEPOINT my_savepoint;
-
--- Borro el registro
-DELETE FROM Product WHERE brand = "51";
-
--- Revierto al punto de guardado
-ROLLBACK TO my_savepoint;
-
--- Confirmo la transacción
-COMMIT;
+    START TRANSACTION;
+    INSERT INTO stock_request (product_id, quantity) VALUES (p_product_id, p_quantity);
+    COMMIT;
+END//
+DELIMITER ;
