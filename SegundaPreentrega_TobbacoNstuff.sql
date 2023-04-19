@@ -958,3 +958,105 @@ BEGIN
     VALUES (OLD.id_City, OLD.City, CURRENT_USER(), NOW());
 END $$
 DELIMITER ;
+
+-- Se crea una tercera tabla y trigger correspondiente para captar los clientes que han sido borrados y dejarlos en un registro
+
+CREATE TABLE DeleteCostumerLog (
+	delete_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    id_Costumer INT,
+	first_name VARCHAR(50),
+	last_name VARCHAR(50),
+	email VARCHAR(50),
+	tel INT,
+	BirthDate DATE,
+	id_Province INT,
+	id_City INT,
+    UserName varchar(100) NULL,
+    registerDate timestamp
+);
+
+DELIMITER $$
+CREATE TRIGGER DeletedCostumer
+BEFORE DELETE
+ON tobbaconstuff.costumer FOR EACH ROW
+BEGIN
+    INSERT INTO DeleteCostumerLog (id_Costumer, first_name, last_name, email, tel, BirthDate, id_Province, id_City, UserName, registerDate) 
+    VALUES (OLD.id_Costumer, OLD.first_name, OLD.last_name, OLD.email, OLD.tel, OLD.BirthDate, OLD.id_Province, OLD.id_City, CURRENT_USER(), NOW());
+END $$
+DELIMITER ;
+
+CREATE TABLE ProdChanged (
+    id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    id_Product INT,
+    brand VARCHAR(30),
+    price DECIMAL(19,2),
+    origin VARCHAR(30),
+    id_tax INT,
+    updated_by VARCHAR(100),
+    updated_at DATETIME,
+    FOREIGN KEY (id_tax) REFERENCES Tax(id_tax)
+);
+
+DELIMITER $$
+CREATE TRIGGER product_update
+BEFORE UPDATE ON Product
+FOR EACH ROW
+BEGIN
+    INSERT INTO ProdChanged (id_Product, brand, price, origin, id_tax, updated_by, updated_at)
+    VALUES (OLD.id_Product, OLD.brand, OLD.price, OLD.origin, OLD.id_tax, USER(), NOW());
+END$$
+DELIMITER ;
+
+-- Tablas transaccionales
+
+CREATE TABLE payments (
+    payment_id INT AUTO_INCREMENT PRIMARY KEY,
+    costumer_id INT NOT NULL,
+    amount DECIMAL(10,2) NOT NULL,
+    FOREIGN KEY (costumer_id) REFERENCES costumer(id_Costumer)
+) ENGINE = InnoDB;
+
+DELIMITER //
+-- Defino un nuevo procedimiento almacenado llamado process_payment
+CREATE PROCEDURE process_payment(IN p_costumer_id INT, IN p_amount DECIMAL(10,2))
+BEGIN
+    -- Declaro un manejador de salida para excepciones 
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        -- Aqui se deshace cualquier cambio realizado por el procedimiento almacenado
+        ROLLBACK;
+        -- Se genera un error con un mensaje personalizado
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Ocurrió un error al procesar el pago.';
+    END;
+
+    -- Inicio una nueva transacción
+    START TRANSACTION;
+    -- Inserto una nueva fila en la tabla de pagos con el ID de cliente y el monto especificados
+    INSERT INTO payments (costumer_id, amount) VALUES (p_costumer_id, p_amount);
+    -- Confirmo la transacción para hacer permanentes los cambios
+    COMMIT;
+END//
+
+DELIMITER ;
+
+CREATE TABLE stock_request (
+    request_id INT AUTO_INCREMENT PRIMARY KEY,
+    product_id INT NOT NULL,
+    quantity INT NOT NULL,
+    FOREIGN KEY (product_id) REFERENCES product(id_product)
+) ENGINE = InnoDB;
+
+DELIMITER //
+CREATE PROCEDURE process_stock_request(IN p_product_id INT, IN p_quantity INT)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'An error occurred while processing the stock request.';
+    END;
+
+    START TRANSACTION;
+    INSERT INTO stock_request (product_id, quantity) VALUES (p_product_id, p_quantity);
+    COMMIT;
+END//
+DELIMITER ;
